@@ -1,6 +1,6 @@
 # Resource Information Platform
 
-[![CI](https://github.com/10vin10-cmd/resource-information-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/10vin10-cmd/resource-information-platform/actions/workflows/ci.yml)
+[![CI](https://github.com/10vin10-cmd/global-resource-information-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/10vin10-cmd/global-resource-information-platform/actions/workflows/ci.yml)
 
 Answers questions about Texas county water use and groundwater with figures quoted exactly as the source states them. Every figure has a citation that opens the exact line of the captured file it came from. When the sources don't hold the answer, the platform says so instead of estimating, and it declines forecasts, causes and advice.
 
