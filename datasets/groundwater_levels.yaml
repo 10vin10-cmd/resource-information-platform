@@ -1,0 +1,13 @@
+id: groundwater_levels
+title: Groundwater level by county (median depth to water)
+publisher: Texas Water Development Board, Groundwater Database
+source_url: https://www.twdb.texas.gov/groundwater/data/gwdbrpt.asp
+notes: >
+  Median of the year's measured wells in the county. Fewer than five wells
+  measured makes the figure unreliable, and it is reported as such.
+keys:
+  county: County
+  year: Year
+metrics:
+  depth_to_water: {column: Median Depth (ft), unit: feet, label: Median depth to groundwater}
+  wells_measured: {column: Wells Measured,    unit: wells, label: Wells measured}
