@@ -1,10 +1,12 @@
 import { classOf, formatValue, quantileBreaks } from "./format";
 
 test("values keep their unit and are never invented", () => {
-  expect(formatValue(1234567.4, "acre-feet")).toBe("1,234,567 acre-feet");
-  expect(formatValue(41.26, "percent")).toBe("41.3%");
-  expect(formatValue(192, "feet")).toBe("192 ft");
-  expect(formatValue(null, "acre-feet")).toBe("no figure");
+  expect(formatValue(68.94, "degF")).toBe("68.9 °F");
+  expect(formatValue(31.4, "inches")).toBe("31.40 in");
+  expect(formatValue(1234567.4, "USD")).toBe("$1,234,567");
+  expect(formatValue(1, "events")).toBe("1 event");
+  expect(formatValue(0, "events")).toBe("0 events");
+  expect(formatValue(null, "inches")).toBe("no figure");
 });
 
 test("quantile classes ignore unknowns and handle ties", () => {

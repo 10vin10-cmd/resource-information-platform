@@ -14,7 +14,7 @@ type Counties = FeatureCollection<Geometry, { name: string }>;
 export function App() {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [counties, setCounties] = useState<Counties | null>(null);
-  const [metric, setMetric] = useState("irrigation");
+  const [metric, setMetric] = useState("precipitation");
   const [year, setYear] = useState<number | null>(null);
   const [values, setValues] = useState<MapValues>({});
   const [selected, setSelected] = useState<string | null>(
@@ -54,8 +54,8 @@ export function App() {
         <div>
           <h1>Resource Information Platform</h1>
           <p className="muted">
-            Texas county water use and groundwater, quoted from the source with a citation for
-            every figure.
+            Texas county weather: temperature, rainfall and severe weather, quoted from NOAA
+            records with a citation for every figure.
           </p>
         </div>
         {meta.synthetic && (

@@ -1,8 +1,10 @@
 /** Values are shown exactly as the source states them, with their unit. */
 export function formatValue(value: number | null, unit: string): string {
   if (value === null) return "no figure";
-  if (unit === "percent") return `${value.toFixed(1)}%`;
-  if (unit === "feet") return `${value.toLocaleString("en-US", { maximumFractionDigits: 1 })} ft`;
+  if (unit === "degF") return `${value.toFixed(1)} °F`;
+  if (unit === "inches") return `${value.toFixed(2)} in`;
+  if (unit === "USD") return `$${Math.round(value).toLocaleString("en-US")}`;
+  if (unit === "events") return `${Math.round(value).toLocaleString("en-US")} event${value === 1 ? "" : "s"}`;
   return `${Math.round(value).toLocaleString("en-US")} ${unit}`;
 }
 

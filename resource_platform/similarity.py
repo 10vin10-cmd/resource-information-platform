@@ -1,7 +1,8 @@
 """Which counties were in a similar situation in a given year, and why.
 
-Each county-year becomes a feature vector in five facets (size, use mix,
-intensity, trend, groundwater). Two methods compare them:
+Each county-year becomes a feature vector in five facets (climate, departure
+from the county's normal, trend, storm mix, storm intensity). Two methods
+compare them:
 
   hyperdimensional encoder   Each feature value is quantised by its rank into
                              one of 16 levels. Level vectors are random +1/-1
@@ -29,15 +30,15 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from resource_platform.answer import USE_CATEGORIES
+from resource_platform.answer import EVENT_TYPES
 from resource_platform.catalog import Catalog
 
 FACETS: dict[str, list[str]] = {
-    "size": ["log_population"],
-    "use_mix": [f"share_{c}" for c in USE_CATEGORIES],
-    "intensity": ["log_use_per_person"],
-    "trend": ["use_change_3y", "population_change_3y"],
-    "groundwater": ["groundwater_share", "depth_to_water", "depth_change_3y"],
+    "climate": ["avg_temp", "temp_range", "log_precipitation"],
+    "departure": ["temp_departure", "precip_departure"],
+    "trend": ["temp_change_3y", "precip_change_3y"],
+    "storm_mix": [f"share_{t}" for t in EVENT_TYPES],
+    "storm_intensity": ["log_events", "log_damage"],
 }
 FEATURES = [f for fs in FACETS.values() for f in fs]
 
@@ -49,38 +50,50 @@ class Key:
 
 
 def build_features(catalog: Catalog) -> tuple[list[Key], np.ndarray]:
-    """One row per county-year that has at least population and use data.
-    NaN marks a value the sources don't give."""
+    """One row per county-year with temperature and precipitation. NaN marks
+    a value the sources don't give. Departures compare a year with the same
+    county's average over the years loaded."""
     rows = catalog.query(
         "SELECT fips, year, metric, value FROM facts WHERE value IS NOT NULL").fetchall()
     data: dict[tuple[str, int], dict[str, float]] = {}
     for fips, year, metric, value in rows:
         data.setdefault((fips, year), {})[metric] = value
 
-    def total_use(d: dict[str, float]) -> float | None:
-        vals = [d[c] for c in USE_CATEGORIES if c in d]
-        # Only compare like with like: a year missing a category isn't a total.
-        return sum(vals) if len(vals) == len(USE_CATEGORIES) else None
+    normal_t: dict[str, list[float]] = {}
+    normal_p: dict[str, list[float]] = {}
+    for (fips, _), d in data.items():
+        if "avg_temp" in d:
+            normal_t.setdefault(fips, []).append(d["avg_temp"])
+        if d.get("precipitation"):
+            normal_p.setdefault(fips, []).append(d["precipitation"])
+
+    def events(d: dict[str, float]) -> float | None:
+        vals = [d[t] for t in EVENT_TYPES if t in d]
+        return sum(vals) if len(vals) == len(EVENT_TYPES) else None
 
     keys, matrix = [], []
     for (fips, year), d in sorted(data.items()):
-        pop, use = d.get("population"), total_use(d)
-        if not pop or use is None:
+        temp, rain = d.get("avg_temp"), d.get("precipitation")
+        if temp is None or not rain:
             continue
         before = data.get((fips, year - 3), {})
-        use_before, pop_before = total_use(before), before.get("population")
+        n_events = events(d)
         f = {
-            "log_population": math.log10(pop),
-            "log_use_per_person": math.log10(max(use, 1) / pop),
-            "use_change_3y": math.log(max(use, 1) / max(use_before, 1)) if use_before else math.nan,
-            "population_change_3y": math.log(pop / pop_before) if pop_before else math.nan,
-            "groundwater_share": d.get("groundwater_share", math.nan),
-            "depth_to_water": d.get("depth_to_water", math.nan),
-            "depth_change_3y": (d["depth_to_water"] - before["depth_to_water"])
-            if "depth_to_water" in d and "depth_to_water" in before else math.nan,
+            "avg_temp": temp,
+            "temp_range": d["max_temp"] - d["min_temp"]
+            if "max_temp" in d and "min_temp" in d else math.nan,
+            "log_precipitation": math.log(rain),
+            "temp_departure": temp - float(np.mean(normal_t[fips])),
+            "precip_departure": math.log(rain / float(np.mean(normal_p[fips]))),
+            "temp_change_3y": temp - before["avg_temp"] if "avg_temp" in before else math.nan,
+            "precip_change_3y": math.log(rain / before["precipitation"])
+            if before.get("precipitation") else math.nan,
+            "log_events": math.log1p(n_events) if n_events is not None else math.nan,
+            "log_damage": math.log1p(d["property_damage"])
+            if "property_damage" in d else math.nan,
         }
-        for c in USE_CATEGORIES:
-            f[f"share_{c}"] = d[c] / use if use else math.nan
+        for t in EVENT_TYPES:
+            f[f"share_{t}"] = d[t] / n_events if n_events else math.nan
         keys.append(Key(fips, year))
         matrix.append([f[name] for name in FEATURES])
     return keys, np.array(matrix, dtype=float)
@@ -196,26 +209,37 @@ class Similarity:
             out[facet] = round(int((a * b).sum()) / denom, 3)
         return dict(sorted(out.items(), key=lambda kv: -kv[1]))
 
-    def evaluate(self, k: int = 10) -> dict:
+    def evaluate(self, k: int = 5) -> dict:
         """Two checks that need no labels:
-          self-match   a county's nearest neighbour across all county-years is
-                       the same county in another year (situations persist)
-          overlap      how many top-k neighbours the two methods share; low
-                       overlap means a reviewer comparing them learns something
+          distance   weather is spatially coherent, so counties that had a
+                     similar year should mostly be near each other. Mean
+                     distance (km) between each county and its k same-year
+                     matches, against the mean distance between random pairs.
+          overlap    how many top-k matches the two methods share; low
+                     overlap means a reviewer comparing them learns something
         """
-        n = len(self.keys)
-        fips = np.array([key.fips for key in self.keys])
-        result = {"county_years": n, "features": len(FEATURES)}
-        for name, sims in (("hdc", self.hdc), ("baseline", self.base)):
-            s = sims.copy()
-            np.fill_diagonal(s, -np.inf)
-            nearest = s.argmax(axis=1)
-            result[f"self_match_{name}"] = round(float((fips[nearest] == fips).mean()), 4)
-        overlaps = []
-        for i in range(n):
-            mask = fips != fips[i]
-            a = set(np.where(mask)[0][np.argsort(-self.hdc[i][mask])[:k]])
-            b = set(np.where(mask)[0][np.argsort(-self.base[i][mask])[:k]])
-            overlaps.append(len(a & b) / k)
-        result[f"top{k}_overlap"] = round(float(np.mean(overlaps)), 4)
+        coords = {f: (c.lat, c.lon) for f, c in self.catalog.counties.items()}
+        result = {"county_years": len(self.keys), "features": len(FEATURES),
+                  "k": k}
+        firsts: dict[str, list[set[str]]] = {"hdc": [], "baseline": []}
+        for method in ("hdc", "baseline"):
+            dists = []
+            for key in self.keys:
+                matches = self.similar(key.fips, key.year, k=k, method=method)
+                firsts[method].append({m.fips for m in matches})
+                dists += [km(coords[key.fips], coords[m.fips]) for m in matches]
+            result[f"mean_km_{method}"] = round(float(np.mean(dists)), 1)
+        fips = sorted(coords)
+        pairs = [km(coords[a], coords[b]) for i, a in enumerate(fips) for b in fips[i + 1:]]
+        result["mean_km_random_pair"] = round(float(np.mean(pairs)), 1)
+        result[f"top{k}_overlap"] = round(float(np.mean(
+            [len(a & b) / k for a, b in zip(firsts["hdc"], firsts["baseline"], strict=True)])), 4)
         return result
+
+
+def km(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """Great-circle distance between two (lat, lon) points."""
+    la1, lo1, la2, lo2 = map(math.radians, (*a, *b))
+    h = (math.sin((la2 - la1) / 2) ** 2
+         + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2)
+    return 6371 * 2 * math.asin(math.sqrt(h))

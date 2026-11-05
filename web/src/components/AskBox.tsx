@@ -4,10 +4,10 @@ import type { Answer } from "../types";
 import { CitationChip } from "./CitationChip";
 
 const EXAMPLES = [
-  "How much water did Bexar County use in 2022?",
-  "Irrigation in Lubbock and Hale from 2019 to 2021",
-  "Depth to groundwater in Hale County since 2018",
-  "Why did irrigation fall in Hale County?",
+  "How much rain fell in Harris County in 2017?",
+  "Average daily high in El Paso and Lubbock from 2020 to 2022",
+  "Storms in Potter County in 2021",
+  "Will it rain in Travis County tomorrow?",
 ];
 
 const STATUS_TEXT: Record<Answer["status"], string> = {
@@ -53,7 +53,7 @@ export function AskBox() {
       <form onSubmit={onSubmit}>
         <label htmlFor="question" className="visually-hidden">Question</label>
         <input id="question" value={question} onChange={(e) => setQuestion(e.target.value)}
-               placeholder="e.g. irrigation in Hale County 2020" />
+               placeholder="e.g. rainfall in Hale County 2020" />
         <button type="submit" disabled={busy}>{busy ? "Asking…" : "Ask"}</button>
       </form>
       <div className="examples">

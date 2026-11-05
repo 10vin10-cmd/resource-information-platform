@@ -1,7 +1,7 @@
 [project]
 name = "resource-information-platform"
 version = "1.0.0"
-description = "Cited answers about Texas county water use and groundwater, with similarity search across counties"
+description = "Cited answers about Texas county weather from NOAA records, with a county map and similarity search"
 requires-python = ">=3.12"
 dependencies = [
   "duckdb>=1.1",

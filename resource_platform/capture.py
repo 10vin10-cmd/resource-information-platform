@@ -30,6 +30,8 @@ class Capture:
     size: int
     filename: str
     synthetic: bool = False
+    derived_from: str | None = None   # digest of the raw capture this was counted from
+    method: str | None = None         # how it was derived
 
     @property
     def short(self) -> str:
@@ -46,7 +48,8 @@ class Store:
         return self.objects / digest[:2] / digest
 
     def capture(self, file: Path | str, dataset: str, source_url: str, publisher: str,
-                synthetic: bool = False, now: datetime | None = None) -> Capture:
+                synthetic: bool = False, now: datetime | None = None,
+                derived_from: str | None = None, method: str | None = None) -> Capture:
         file = Path(file)
         digest = sha256_file(file)
         target = self.path(digest)
@@ -61,7 +64,8 @@ class Store:
             return existing  # same bytes for the same dataset: nothing new
         cap = Capture(digest=digest, dataset=dataset, source_url=source_url, publisher=publisher,
                       captured_at=(now or datetime.now(UTC)).isoformat(timespec="seconds"),
-                      size=target.stat().st_size, filename=file.name, synthetic=synthetic)
+                      size=target.stat().st_size, filename=file.name, synthetic=synthetic,
+                      derived_from=derived_from, method=method)
         self.root.mkdir(parents=True, exist_ok=True)
         with self.manifest.open("a") as fh:
             fh.write(json.dumps(asdict(cap), sort_keys=True) + "\n")

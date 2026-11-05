@@ -59,14 +59,14 @@ jobs:
         run: |
           resource sample
           resource build
-          resource ask "How much water did Bexar County use in 2022?"
-          resource ask "Why did irrigation fall in Hale County?"
-          resource similar Hale 2022 --evaluate
+          resource ask "How much rain fell in Harris County in 2017?"
+          resource ask "Will it rain in Travis County tomorrow?"
+          resource similar Harris 2017 --evaluate
           resource log
           {
             echo '## Similarity evaluation (synthetic sample)'
             echo '```json'
-            resource similar Hale 2022 --evaluate -k 0 | sed -n '/^{/,/^}/p'
+            resource similar Harris 2017 --evaluate -k 0 | sed -n '/^{/,/^}/p'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Serve smoke test
@@ -75,4 +75,4 @@ jobs:
           for i in $(seq 1 20); do curl -sf localhost:8000/api/meta > /dev/null && break; sleep 1; done
           curl -sf localhost:8000/ | grep -q "Resource Information Platform"
           curl -sf -X POST localhost:8000/api/ask -H 'Content-Type: application/json' \
-            -d '{"question": "irrigation in Hale County 2020"}' | grep -q '"answered"'
+            -d '{"question": "rainfall in Hale County 2020"}' | grep -q '"answered"'

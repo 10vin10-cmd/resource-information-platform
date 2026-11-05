@@ -45,13 +45,7 @@ export function CountyPanel({ fips, year, onSelect }: Props) {
         ))}
       </dl>
 
-      {facts.facts.some((f) => f.metric === "wells_measured" && f.value !== null && f.value < 5) && (
-        <p className="note">
-          Fewer than five wells were measured this year, so the groundwater median is unreliable.
-        </p>
-      )}
-
-      <h3>Counties in a similar situation in {year}</h3>
+      <h3>Counties with a similar year in {year}</h3>
       {similarError && <p className="muted">{similarError}</p>}
       {similar && (
         <ol className="similar">
@@ -64,8 +58,8 @@ export function CountyPanel({ fips, year, onSelect }: Props) {
                 </button>
                 <span className="score">{m.score.toFixed(2)}</span>
                 <span className="muted">
-                  most alike in {top?.[0].replace("_", " ")}
-                  {second ? ` and ${second[0].replace("_", " ")}` : ""}
+                  most alike in {top?.[0].replaceAll("_", " ")}
+                  {second ? ` and ${second[0].replaceAll("_", " ")}` : ""}
                 </span>
               </li>
             );
@@ -73,8 +67,8 @@ export function CountyPanel({ fips, year, onSelect }: Props) {
         </ol>
       )}
       <p className="muted small">
-        Similar means a similar mix of size, water use, trends and groundwater. It says nothing
-        about causes.
+        Similar means a similar year: climate, departure from the county's normal, trend and
+        severe weather. It says nothing about causes.
       </p>
     </section>
   );

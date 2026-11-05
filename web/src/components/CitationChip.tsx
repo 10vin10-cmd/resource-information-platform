@@ -37,6 +37,12 @@ export function CitationChip({ citation }: { citation: string }) {
                 {source.publisher} · captured {source.captured_at.slice(0, 10)} · line {source.line}
               </span>
               {source.synthetic && <span className="tag">synthetic sample</span>}
+              {source.derived_from && (
+                <span className="muted" title={source.method ?? undefined}>
+                  Counted from raw capture{source.derived_from.includes(",") ? "s" : ""}{" "}
+                  <code>{source.derived_from.split(",").map((d) => d.slice(0, 12)).join(", ")}</code>
+                </span>
+              )}
               <table className="row">
                 <tbody>
                   {Object.entries(source.row).map(([k, v]) => (

@@ -10,8 +10,8 @@ Every answer has one of four outcomes:
 
 Rules the answers follow:
   - A figure is quoted as the source stated it, with its unit and citation.
-  - Nothing is added up, averaged or filled in. Asking for "total water use"
-    returns each category the source reports, not a sum it never stated.
+  - Nothing is added up, averaged or filled in. Asking about "storms" returns
+    each event type the source reports, not a total it never stated.
   - Every answer, including unknowns and refusals, is appended to a
     hash-chained log, so what was answered (and what couldn't be) is auditable,
     and the unanswered questions show which sources to capture next.
@@ -29,28 +29,27 @@ from pathlib import Path
 
 from resource_platform.catalog import Catalog, County, cite
 
-USE_CATEGORIES = ["municipal", "manufacturing", "mining", "steam_electric", "irrigation",
-                  "livestock"]
+EVENT_TYPES = ["tornado", "hail", "flood", "thunderstorm_wind", "tropical", "winter"]
 
 METRIC_WORDS: list[tuple[str, list[str]]] = [
-    (r"\bdepth to (ground)?water|\bwater table|\bgroundwater levels?|\baquifer levels?"
-     r"|\bwater levels?", ["depth_to_water"]),
-    (r"\bwells? measured|\bhow many wells", ["wells_measured"]),
-    (r"\bshare (of|from) groundwater|\bgroundwater share|\bfrom groundwater",
-     ["groundwater_share"]),
-    (r"\birrigat", ["irrigation"]),
-    (r"\bmunicipal|\bcities\b|\bcity\b|\bpublic supply|\bdrinking", ["municipal"]),
-    (r"\bmanufactur|\bindustr", ["manufacturing"]),
-    (r"\bmining\b|\boil\b|\bgas\b|\bfrack", ["mining"]),
-    (r"\bpower\b|\bsteam\b|\belectric", ["steam_electric"]),
-    (r"\blivestock|\bcattle\b|\branch", ["livestock"]),
-    (r"\bpopulation|\bpeople\b|\bresidents\b", ["population"]),
+    (r"\baverage temp|\bmean temp|\btemperature|\bhow (hot|warm|cold)\b|\bwarm(er|est)?\b",
+     ["avg_temp"]),
+    (r"\bhighs?\b|\bmax(imum)? temp|\bdaily high", ["max_temp"]),
+    (r"\blows?\b|\bmin(imum)? temp|\bdaily low", ["min_temp"]),
+    (r"\bprecip|\brain(fall|ed|y)?\b|\bhow (wet|dry)\b", ["precipitation"]),
+    (r"\btornado", ["tornado"]),
+    (r"\bhail", ["hail"]),
+    (r"\bflood", ["flood"]),
+    (r"\bwind\b|\bwinds\b|\bthunderstorm wind", ["thunderstorm_wind"]),
+    (r"\bhurricane|\btropical", ["tropical"]),
+    (r"\bwinter|\bsnow|\bice storm|\bfreeze|\bfreezing", ["winter"]),
+    (r"\bdamage|\blosses\b|\bcost of (the )?storms?", ["property_damage"]),
 ]
-ALL_USE = r"\bwater use|\buse[sd]? (?:\w+ )?water|\bwater usage|\btotal\b|\bhow much water"
+ALL_EVENTS = r"\bstorms?\b|\bsevere weather|\bweather events|\bevents\b"
 
 # County names that are also ordinary words count only when capitalised or
-# followed by "County"; names shared with aquifers and rivers ("Edwards
-# Aquifer", "Brazos River") don't count when followed by those words.
+# followed by "County"; names shared with rivers and aquifers ("Brazos
+# River", "Edwards Aquifer") don't count when followed by those words.
 COMMON_WORDS = {"real", "young", "hall", "king", "wood", "bell", "hill", "lamb", "clay", "rains",
                 "brown", "jack", "live oak", "wise", "gray", "ward", "hood", "lee", "kent", "coke",
                 "crane", "orange", "liberty", "victoria", "cotton", "mills", "frio", "starr",
@@ -59,7 +58,8 @@ COMMON_WORDS = {"real", "young", "hall", "king", "wood", "bell", "hill", "lamb",
 DECLINE = [
     ("cause", r"\bwhy\b|\bcause[sd]?\b|\bbecause\b|\bdue to\b|\bblame\b",
      "The platform reports what sources state. It doesn't explain causes."),
-    ("forecast", r"\bwill\b|\bforecast|\bpredict|\bprojection|\bnext year\b|\bfuture\b",
+    ("forecast", r"\bwill\b|\bforecast|\bpredict|\bprojection|\bnext (year|week|month)\b"
+                 r"|\btomorrow\b|\bfuture\b|\bgoing to\b",
      "The platform reports recorded figures only. It doesn't forecast."),
     ("advice", r"\bshould\b|\brecommend|\bbest\b|\benough\b|\ballowed\b|\bpermit(ted)?\b|\bsafe\b",
      "The platform doesn't give advice or decide what is allowed or enough."),
@@ -111,8 +111,11 @@ def parse(text: str, catalog: Catalog) -> Question:
     for pattern, ids in METRIC_WORDS:
         if re.search(pattern, lowered):
             metrics += [m for m in ids if m not in metrics]
-    if not metrics and re.search(ALL_USE, lowered):
-        metrics = list(USE_CATEGORIES)
+    if ("max_temp" in metrics or "min_temp" in metrics) and not re.search(
+            r"\baverage temp|\bmean temp", lowered):
+        metrics = [m for m in metrics if m != "avg_temp"]   # "daily high temperature"
+    if not metrics and re.search(ALL_EVENTS, lowered):
+        metrics += [m for m in EVENT_TYPES if m not in metrics]
     years = find_years(text, catalog.years())
     unknown = None
     if not counties:
@@ -189,8 +192,8 @@ class Answerer:
         if not q.metrics:
             return Answer(text, "declined",
                           reason="measure: the question doesn't name something the platform "
-                                 "records (water use by category, population, groundwater "
-                                 "levels).")
+                                 "records (temperature, precipitation, severe weather events, "
+                                 "storm damage).")
         years = q.years or available[-1:]
         if not years:
             return Answer(text, "unknown", reason="no data has been loaded yet.")
@@ -215,15 +218,14 @@ class Answerer:
                              f"{fmt(f['value'], f['unit'])}"))
 
         notes = []
-        if q.metrics == USE_CATEGORIES:
-            notes.append("Water use is reported by category. The platform doesn't add the "
-                         "categories into a total the source didn't state.")
-        if "depth_to_water" in q.metrics:
-            for s in statements:
-                wells = self.catalog.facts_for(s.fips, s.year, ["wells_measured"])
-                if wells and wells[0]["value"] is not None and wells[0]["value"] < 5:
-                    notes.append(f"{s.county} {s.year}: only {wells[0]['value']:.0f} wells were "
-                                 "measured, so the median is unreliable.")
+        if sum(m in EVENT_TYPES for m in q.metrics) > 1:
+            notes.append("Events are reported by type. The platform doesn't add the types into "
+                         "a total the source didn't state.")
+        if any(m in EVENT_TYPES or m == "property_damage" for m in q.metrics):
+            notes.append("Event counts and damage come from NOAA's event records, counted per "
+                         "county and year; the citation shows the raw file they came from.")
+        if "property_damage" in q.metrics:
+            notes.append("Damage figures are National Weather Service estimates.")
         if not statements:
             return Answer(text, "unknown", missing=missing, notes=notes,
                           reason="the sources have no figure for this.")
@@ -238,10 +240,14 @@ class Answerer:
 
 
 def fmt(value: float, unit: str) -> str:
-    if unit == "percent":
-        return f"{value:.1f}%"
-    if unit == "feet":
-        return f"{value:,.1f} ft"
+    if unit == "degF":
+        return f"{value:.1f} °F"
+    if unit == "inches":
+        return f"{value:.2f} in"
+    if unit == "USD":
+        return f"${value:,.0f}"
+    if unit == "events":
+        return f"{value:,.0f} event{'s' if value != 1 else ''}"
     return f"{value:,.0f} {unit}"
 
 

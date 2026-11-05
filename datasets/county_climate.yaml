@@ -1,0 +1,16 @@
+id: county_climate
+title: Annual climate by county
+publisher: NOAA National Centers for Environmental Information, Climate at a Glance (county time series)
+source_url: https://www.ncei.noaa.gov/access/monitoring/climate-at-a-glance/county/time-series
+notes: >
+  County values are averages over a gridded analysis of station observations
+  (nClimGrid), and are revised as late observations arrive. An answer always
+  cites the capture it was read from.
+keys:
+  county: County
+  year: Year
+metrics:
+  avg_temp:      {column: Average Temperature (F), unit: degF,   label: Average temperature}
+  max_temp:      {column: Maximum Temperature (F), unit: degF,   label: Average daily high}
+  min_temp:      {column: Minimum Temperature (F), unit: degF,   label: Average daily low}
+  precipitation: {column: Precipitation (in),      unit: inches, label: Precipitation}

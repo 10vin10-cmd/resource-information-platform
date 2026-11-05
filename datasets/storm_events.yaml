@@ -1,0 +1,21 @@
+id: storm_events
+title: Severe weather events by county and year
+publisher: NOAA National Centers for Environmental Information, Storm Events Database
+source_url: https://www.ncei.noaa.gov/stormevents/
+notes: >
+  NOAA publishes one row per event. `resource storms` counts them per county,
+  year and type into this table, and records which raw capture each count
+  came from. Damage figures are National Weather Service estimates.
+keys:
+  county: County
+  year: Year
+metrics:
+  tornado:           {column: Tornado,               unit: events, label: Tornadoes}
+  hail:              {column: Hail,                  unit: events, label: Hail events}
+  flood:             {column: Flood,                 unit: events, label: Flood events}
+  thunderstorm_wind: {column: Thunderstorm Wind,     unit: events, label: Damaging wind events}
+  tropical:          {column: Tropical,              unit: events, label: Tropical storm and hurricane events}
+  winter:            {column: Winter,                unit: events, label: Winter storm events}
+  property_damage:   {column: Property Damage (USD), unit: USD,    label: Property damage}
+# Event types are reported separately; the platform never adds them into a
+# total that the source did not state.

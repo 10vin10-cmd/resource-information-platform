@@ -33,14 +33,21 @@ def cmd_capture(a) -> int:
 
 
 def cmd_sample(a) -> int:
-    from resource_platform.sample import generate
-    store = Store(a.home / "store")
-    datasets = load_datasets()
-    for ds_id, path in generate(a.home / "sample").items():
-        cap = store.capture(path, ds_id, f"synthetic://{path.name}",
-                            f"Synthetic sample shaped like: {datasets[ds_id].publisher}",
-                            synthetic=True)
-        print(f"captured {path.name} as {cap.short} (synthetic)")
+    from resource_platform.sample import capture_sample
+    for cap in capture_sample(Store(a.home / "store"), a.home / "sample"):
+        how = " (counted from the raw events)" if cap.derived_from else ""
+        print(f"captured {cap.filename} as {cap.short} for {cap.dataset}, synthetic{how}")
+    return 0
+
+
+def cmd_storms(a) -> int:
+    from resource_platform.storms import capture_counts
+    raw, counted, r = capture_counts(Store(a.home / "store"), a.files, a.home / "work",
+                                     state=a.state, source_url=a.source_url)
+    print(f"captured {len(raw)} raw file(s); {r.rows:,} rows read, {r.counted:,} county events "
+          f"counted into {counted.short}")
+    for reason, n in r.skipped.most_common():
+        print(f"  skipped {n:>6,}  {reason}")
     return 0
 
 
@@ -124,6 +131,12 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("sample", help="generate and capture the synthetic sample").set_defaults(
         fn=cmd_sample)
+    c = sub.add_parser("storms", help="count NOAA Storm Events details files per county-year")
+    c.add_argument("files", nargs="+", type=Path)
+    c.add_argument("--state", default="TEXAS")
+    c.add_argument("--source-url")
+    c.set_defaults(fn=cmd_storms)
+
     sub.add_parser("build", help="load the latest captures and report issues").set_defaults(
         fn=cmd_build)
 

@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from resource_platform.answer import USE_CATEGORIES, Answerer, AnswerLog, find_counties, parse
+from resource_platform.answer import EVENT_TYPES, Answerer, AnswerLog, find_counties, parse
 
 
 @pytest.fixture
@@ -12,46 +12,58 @@ def ask(catalog, tmp_path):
 
 
 def test_single_figure_is_cited(ask, catalog):
-    ans = ask("What was irrigation use in Hale County in 2020?")
+    ans = ask("How much rain fell in Hale County in 2020?")
     assert ans.status == "answered" and len(ans.statements) == 1
     s = ans.statements[0]
-    assert s.county == "Hale" and s.year == 2020 and s.unit == "acre-feet"
-    assert catalog.resolve(s.citation)["row"]["County"] == "HALE"
+    assert s.county == "Hale" and s.metric == "precipitation" and s.unit == "inches"
+    assert catalog.resolve(s.citation)["row"]["County"] == "Hale County"
     assert ans.synthetic
 
 
-def test_water_use_is_never_summed(ask):
-    ans = ask("How much water did Bexar County use in 2022?")
-    assert [s.metric for s in ans.statements] == USE_CATEGORIES
+def test_event_types_are_never_summed(ask):
+    ans = ask("storms in Potter County in 2021")
+    assert [s.metric for s in ans.statements] == EVENT_TYPES
     assert any("doesn't add" in n for n in ans.notes)
 
 
+def test_daily_high_is_not_the_average(catalog):
+    assert parse("average daily high temperature in Lubbock 2020", catalog).metrics == [
+        "max_temp"]
+    assert parse("temperature in Lubbock 2020", catalog).metrics == ["avg_temp"]
+    assert parse("storm damage in Harris 2017", catalog).metrics == ["property_damage"]
+
+
 def test_ranges_and_several_counties(ask):
-    ans = ask("irrigation in Lubbock and Hale from 2019 to 2021")
+    ans = ask("Average daily high in El Paso and Lubbock from 2020 to 2022")
     assert {(s.county, s.year) for s in ans.statements} == {
-        (c, y) for c in ("Lubbock", "Hale") for y in (2019, 2020, 2021)}
+        (c, y) for c in ("El Paso", "Lubbock") for y in (2020, 2021, 2022)}
 
 
 def test_partial_when_some_figures_are_missing(ask, catalog):
-    row = catalog.db.execute("SELECT county, year FROM facts WHERE metric = 'mining' "
+    row = catalog.db.execute("SELECT county, year FROM facts WHERE metric = 'precipitation' "
                              "AND value IS NULL LIMIT 1").fetchone()
-    ans = ask(f"water use in {row[0]} County in {row[1]}")
+    ans = ask(f"temperature and rainfall in {row[0]} County in {row[1]}")
     assert ans.status == "partial"
-    assert any("Mining use" in m and "left blank" in m for m in ans.missing)
+    assert any("Precipitation" in m and "left blank" in m for m in ans.missing)
 
 
 def test_unknown_when_the_sources_have_nothing(ask):
-    ans = ask("water use in Bexar County in 2001")
+    ans = ask("rainfall in Bexar County in 2001")
     assert ans.status == "unknown" and not ans.statements and ans.missing
 
 
+def test_damage_carries_its_caveat(ask):
+    ans = ask("storm damage in Harris County in 2017")
+    assert any("estimates" in n for n in ans.notes)
+
+
 @pytest.mark.parametrize("question,kind", [
-    ("Why did irrigation fall in Hale County?", "cause"),
-    ("What will Travis County use next year?", "forecast"),
-    ("What will Travis County use in 2030?", "forecast"),
-    ("Water use in Travis County in 2031", "forecast"),
-    ("Should Bexar County pump more groundwater?", "advice"),
-    ("water use in Springfield County in 2020", "place"),
+    ("Why was 2022 so dry in Hale County?", "cause"),
+    ("Will it rain in Travis County tomorrow?", "forecast"),
+    ("How hot will Travis County be next year?", "forecast"),
+    ("Rainfall in Travis County in 2031", "forecast"),
+    ("Should Bexar County farmers plant early?", "advice"),
+    ("rainfall in Springfield County in 2020", "place"),
     ("Tell me about Bexar County in 2020", "measure"),
 ])
 def test_out_of_scope_is_declined_with_a_reason(ask, question, kind):
@@ -61,26 +73,18 @@ def test_out_of_scope_is_declined_with_a_reason(ask, question, kind):
 
 def test_ambiguous_county_names(catalog):
     names = lambda t: [c.name for c in find_counties(t, catalog)]  # noqa: E731
-    assert names("real figures for Bexar") == ["Bexar"]           # 'real' is a word here
-    assert names("water use in Real County") == ["Real"]
-    assert names("Edwards Aquifer levels in Bexar") == ["Bexar"]  # aquifer, not county
+    assert names("real rainfall for Bexar") == ["Bexar"]          # 'real' is a word here
+    assert names("rainfall in Real County") == ["Real"]
+    assert names("Brazos River floods near Waco in McLennan") == ["McLennan"]
     assert names("El Paso and Hudspeth") == ["El Paso", "Hudspeth"]
-
-
-def test_groundwater_level_warns_when_few_wells(catalog, ask):
-    row = catalog.db.execute("SELECT county, year FROM facts WHERE metric = 'wells_measured' "
-                             "AND value < 5 LIMIT 1").fetchone()
-    ans = ask(f"depth to groundwater in {row[0]} County in {row[1]}")
-    assert ans.status == "answered" and any("unreliable" in n for n in ans.notes)
-    assert parse("water table in Lubbock 2020", catalog).metrics == ["depth_to_water"]
 
 
 def test_log_is_hash_chained_and_tamper_evident(catalog, tmp_path):
     log = AnswerLog(tmp_path / "log.jsonl")
     a = Answerer(catalog, log)
-    a.ask("irrigation in Hale County 2020")
+    a.ask("rainfall in Hale County 2020")
     a.ask("Why is Hale dry?")
-    a.ask("water use in Springfield County in 2020")
+    a.ask("rainfall in Springfield County in 2020")
     assert log.verify() is None and len(log.entries()) == 3
     assert dict(log.gaps()) == {"cause": 1, "place": 1}
 

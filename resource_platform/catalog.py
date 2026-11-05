@@ -256,6 +256,7 @@ class Catalog:
             "publisher": cap.publisher, "source_url": cap.source_url,
             "captured_at": cap.captured_at, "sha256": cap.digest, "line": line,
             "synthetic": cap.synthetic, "row": dict(zip(header, values, strict=False)),
+            "derived_from": cap.derived_from, "method": cap.method,
         }
 
 

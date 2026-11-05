@@ -89,4 +89,6 @@ export interface SourceLine {
   line: number;
   synthetic: boolean;
   row: Record<string, string>;
+  derived_from: string | null;
+  method: string | null;
 }

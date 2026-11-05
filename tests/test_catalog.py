@@ -13,12 +13,11 @@ def test_county_name_variants():
     assert name_key("De Witt") == name_key("DEWITT") == name_key("DeWitt County")
 
 
-def test_sample_loads_and_total_row_is_an_issue(catalog):
+def test_sample_loads_and_statewide_row_is_an_issue(catalog):
     n = catalog.db.execute("SELECT count(*) FROM facts").fetchone()[0]
-    assert n > 15_000
+    assert n > 20_000
     issues = catalog.db.execute("SELECT problem FROM load_issues").fetchall()
-    assert issues == [("unknown county 'STATE TOTAL'",)]
-    # every Texas county is present
+    assert issues == [("unknown county 'Texas statewide'",)]
     assert catalog.db.execute("SELECT count(DISTINCT fips) FROM facts").fetchone()[0] == 254
 
 
@@ -29,27 +28,36 @@ def test_blanks_stay_unknown(catalog):
 
 def test_citation_resolves_to_the_source_line(catalog):
     bexar = catalog.county_by_name("Bexar")
-    fact = catalog.facts_for(bexar.fips, 2020, ["municipal"])[0]
+    fact = catalog.facts_for(bexar.fips, 2020, ["avg_temp"])[0]
     src = catalog.resolve(f"{fact['capture'][:12]}:L{fact['line']}")
-    assert src["row"]["County"] == "BEXAR" and src["row"]["Year"] == "2020"
-    assert float(src["row"]["Municipal"].replace(",", "")) == fact["value"]
+    assert src["row"]["County"] == "Bexar County" and src["row"]["Year"] == "2020"
+    assert float(src["row"]["Average Temperature (F)"]) == fact["value"]
     assert src["synthetic"] is True and len(src["sha256"]) == 64
+    assert src["derived_from"] is None
 
 
-def test_messy_publisher_file(tmp_path):
-    f = tmp_path / "wu.csv"
-    f.write_text("﻿County,Year,Population,Municipal,Manufacturing,Mining,Steam Electric,"
-                 "Irrigation,Livestock,Groundwater Share\n"
-                 "DE WITT,2021,\"20,001\",\"1,200\",0,,0,500,*,40.0\n"
-                 "Atlantis,2021,1,1,1,1,1,1,1,1\n"
-                 "Bexar,2021,2000000,lots,0,0,0,0,0,10\n")
+def test_counted_figures_cite_their_raw_source(catalog):
+    harris = catalog.county_by_name("Harris")
+    fact = catalog.facts_for(harris.fips, 2017, ["tropical"])[0]
+    src = catalog.resolve(f"{fact['capture'][:12]}:L{fact['line']}")
+    raw = catalog.store.find(src["derived_from"])
+    assert raw.dataset == "storm_events_raw" and "counted" in src["method"]
+
+
+def test_messy_export(tmp_path):
+    f = tmp_path / "climate.csv"
+    f.write_text("﻿County,Year,Average Temperature (F),Maximum Temperature (F),"
+                 "Minimum Temperature (F),Precipitation (in)\n"
+                 "DE WITT COUNTY,2021,\"70.1\",81.0,59.2,\n"
+                 "Atlantis,2021,1,1,1,1\n"
+                 "Bexar County,2021,warm,80,60,30\n")
     store = Store(tmp_path / "store")
-    store.capture(f, "water_use", "u", "p")
+    store.capture(f, "county_climate", "u", "p")
     cat = Catalog.open(store)
     r = cat.build()
     problems = sorted(i.problem for i in r.issues)
-    assert problems == ["Municipal: not a number 'lots'", "unknown county 'Atlantis'"]
+    assert problems == ["Average Temperature (F): not a number 'warm'",
+                        "unknown county 'Atlantis'"]
     dewitt = cat.county_by_name("DeWitt")
     vals = {f["metric"]: f["value"] for f in cat.facts_for(dewitt.fips, 2021)}
-    assert vals["population"] == 20001 and vals["municipal"] == 1200
-    assert vals["mining"] is None and vals["livestock"] is None
+    assert vals["avg_temp"] == 70.1 and vals["precipitation"] is None
